@@ -1,0 +1,22 @@
+# Keys and environment secrets (CRITICAL: Do not upload to GitHub!)
+backend/.env
+.env
+.env.local
+
+# Python files
+backend/__pycache__/
+backend/*.pyc
+backend/temp_uploads/
+backend/utf8_output.txt
+backend/output.txt
+
+# Node / Next.js files
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env*.local
+
+# OS files
+.DS_Store
+Thumbs.db
