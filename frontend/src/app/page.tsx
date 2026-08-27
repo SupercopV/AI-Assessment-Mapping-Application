@@ -8,7 +8,8 @@ import WorkspaceScreen from '../components/WorkspaceScreen';
 import DashboardScreen from '../components/DashboardScreen';
 import { RefreshCw, Layout, Brain, Info, AlertTriangle } from 'lucide-react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE_URL = rawApiUrl.endsWith('/') ? rawApiUrl.slice(0, -1) : rawApiUrl;
 
 type AppState = 'upload' | 'processing' | 'workspace' | 'dashboard';
 
@@ -29,11 +30,19 @@ export default function Home() {
   // Check health / config on load
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/health`)
-      .then((res) => res.json())
-      .then((data) => setHealthStatus(data))
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`API server returned status ${res.status}`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setHealthStatus(data);
+        setErrorText(null);
+      })
       .catch((err) => {
         console.error('Error fetching backend health:', err);
-        setErrorText('Could not connect to the backend server. Make sure it is running on port 8000.');
+        setErrorText(`Could not connect to the backend server at ${API_BASE_URL}. Ensure the backend is active and running.`);
       });
   }, []);
 
