@@ -634,6 +634,11 @@ def grade_assessment(questions: List[Question], answers: List[AnswerBlock], mapp
     uncertain_count = 0
     unmatched_count = len([m for m in mappings if m.status == "unmatched"])
     
+    from concurrent.futures import ThreadPoolExecutor
+    
+    # Collect all questions that need grading
+    grading_tasks = []
+    
     for q in questions:
         q_marks = q.marks if q.marks else 5.0
         total_marks += q_marks
@@ -657,22 +662,29 @@ def grade_assessment(questions: List[Question], answers: List[AnswerBlock], mapp
             ans_block = ans_dict.get(m.answer_id)
             ans_text = ans_block.text if ans_block else ""
             
-            if is_mock_mode() or is_demo:
-                g = _mock_grade_question(q.id, q_marks, ans_text)
-                grades.append(g)
-                marks_obtained += g.marks_obtained
+            grading_tasks.append((q, ans_text, q_marks, is_mock_mode() or is_demo))
+            
+    # Solve grading tasks in parallel using thread workers
+    if grading_tasks:
+        def execute_grade(task_item):
+            q, ans_text, q_marks, mock_enabled = task_item
+            if mock_enabled:
+                return _mock_grade_question(q.id, q_marks, ans_text)
             else:
                 try:
-                    # Space out requests to prevent rate limits (RPM exhausted) on proxy API endpoints
-                    time.sleep(1.2)
-                    g = _ai_grade_question(q, ans_text, q_marks)
-                    grades.append(g)
-                    marks_obtained += g.marks_obtained
+                    # Execute individual grading request concurrently
+                    return _ai_grade_question(q, ans_text, q_marks)
                 except Exception as e:
                     logger.error(f"DeepSeek grading failed for question {q.id}: {e}. Falling back to default grading.")
-                    g = _mock_grade_question(q.id, q_marks, ans_text)
-                    grades.append(g)
-                    marks_obtained += g.marks_obtained
+                    return _mock_grade_question(q.id, q_marks, ans_text)
+                    
+        # Concurrency limit of 5 workers to be safe with concurrent downstream requests
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            graded_results = list(executor.map(execute_grade, grading_tasks))
+            
+        for g in graded_results:
+            grades.append(g)
+            marks_obtained += g.marks_obtained
                     
     percentage = (marks_obtained / total_marks * 100) if total_marks > 0 else 0.0
     
