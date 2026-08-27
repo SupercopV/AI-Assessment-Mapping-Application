@@ -37,6 +37,14 @@ app.add_middleware(
 
 # In-memory stores
 session_store: Dict[str, Assessment] = {}
+
+@app.get("/")
+def read_root():
+    return {
+        "message": "AI Assessment Extraction & Answer Mapping API is Online",
+        "health": "/api/health",
+        "docs": "/docs"
+    }
 status_store: Dict[str, ProcessingStatus] = {}
 dimensions_store: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}  # session_id -> {qp/as -> dims}
 
