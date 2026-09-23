@@ -50,7 +50,7 @@ def call_deepseek(prompt: str, system_prompt: str = "You are a helpful grading a
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.0,
-        "max_tokens": 1200,
+        "max_tokens": 1000,
         "response_format": {"type": "json_object"}
     }
 
