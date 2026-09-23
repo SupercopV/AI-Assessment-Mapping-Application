@@ -149,6 +149,7 @@ def call_deepseek_with_validation_and_retry(prompt: str, schema_class: Any, syst
 def extract_questions_from_ocr(ocr_words: List[Dict[str, Any]]) -> List[Question]:
     """
     Given raw OCR words/lines from the question paper, extracts a list of Question objects.
+    Uses instant regex heuristic parsing first for fast response on structured/digital papers.
     """
     pages_text = {}
     for word in ocr_words:
@@ -165,10 +166,16 @@ def extract_questions_from_ocr(ocr_words: List[Dict[str, Any]]) -> List[Question
         
     ocr_dump = "\n".join(formatted_ocr_input)
     
+    # Try instant regex parsing first
+    heuristic_q = _mock_extract_questions(ocr_dump)
+    if len(heuristic_q) >= 2 and all(q.text and len(q.text.strip()) > 5 for q in heuristic_q):
+        logger.info(f"Instant regex parser detected {len(heuristic_q)} questions. Bypassing LLM question parsing.")
+        return heuristic_q
+
     is_demo = any("supervised" in w.get("text", "").lower() for w in ocr_words)
     
     if is_mock_mode() or is_demo:
-        return _mock_extract_questions(ocr_dump)
+        return heuristic_q
         
     system_prompt = (
         "You are an assessment parser. Your job is to extract every question from the OCR text "
@@ -448,9 +455,16 @@ def map_answers_to_questions(questions: List[Question], answers: List[AnswerBloc
         return []
         
     is_demo = any("supervised" in q.text.lower() for q in questions)
-        
+    
+    heuristic_map = _mock_answer_mapping(questions, answers)
     if is_mock_mode() or is_demo:
-        return _mock_answer_mapping(questions, answers)
+        return heuristic_map
+
+    # Fast-path: If all answered questions mapped with HIGH confidence labels (e.g. Ans 1, Ans 2), bypass LLM
+    high_conf_count = len([m for m in heuristic_map if m.mapping_confidence == "HIGH"])
+    if high_conf_count >= len(questions) and len(heuristic_map) > 0:
+        logger.info(f"Instant label matcher aligned all {high_conf_count} questions with HIGH confidence. Bypassing LLM answer mapping.")
+        return heuristic_map
         
     question_payload = [{"id": q.id, "number": q.number, "text": q.text} for q in questions]
     answer_payload = [{"id": a.id, "text": a.text, "page": a.pages[0]} for a in answers]
