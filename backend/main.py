@@ -71,44 +71,43 @@ def process_assessment_task(
     as_path: str
 ):
     try:
-        # Step 2: Processing QP
-        logger.info(f"[{session_id}] Starting QP processing")
+        from concurrent.futures import ThreadPoolExecutor
+        
+        # Step 2 & 4: Run Question Paper and Answer Sheet OCR concurrently
+        logger.info(f"[{session_id}] Starting parallel OCR extraction for QP and AS")
         status_store[session_id] = ProcessingStatus(
-            step="processing_qp", status="running", progress=15, message="Processing question paper (OCR)..."
+            step="processing_qp", status="running", progress=20, message="Extracting text from Question Paper & Answer Sheet..."
         )
         
-        qp_ocr, qp_dims = extract_text_from_pdf_or_image(qp_path, is_answer_sheet=False)
-        
-        # Step 3: Extracting Questions
-        status_store[session_id] = ProcessingStatus(
-            step="extracting_questions", status="running", progress=30, message="Extracting questions using DeepSeek AI..."
-        )
-        questions = extract_questions_from_ocr(qp_ocr)
-        
-        if not questions:
-            raise ValueError("No questions could be detected or generated.")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_qp = executor.submit(extract_text_from_pdf_or_image, qp_path, False)
+            future_as = executor.submit(extract_text_from_pdf_or_image, as_path, True)
+            qp_ocr, qp_dims = future_qp.result()
+            as_ocr, as_dims = future_as.result()
             
-        # Step 4: Processing Answer Sheet
-        status_store[session_id] = ProcessingStatus(
-            step="processing_as", status="running", progress=45, message="Processing answer sheet (OCR)..."
-        )
-        as_ocr, as_dims = extract_text_from_pdf_or_image(as_path, is_answer_sheet=True)
-        
         # Save page dimensions for rendering
         dimensions_store[session_id] = {
             "question_paper": [{"page": d[0], "width": d[1], "height": d[2]} for d in qp_dims],
             "answer_sheet": [{"page": d[0], "width": d[1], "height": d[2]} for d in as_dims]
         }
         
-        # Step 5: Extracting Answers
+        # Step 3 & 5: Run Question Extraction and Answer Segmentation concurrently
         status_store[session_id] = ProcessingStatus(
-            step="extracting_answers", status="running", progress=60, message="Grouping answers into logical blocks..."
+            step="extracting_questions", status="running", progress=45, message="Parsing questions and segmenting student answer blocks..."
         )
-        answers = segment_answer_sheet(as_ocr, as_dims)
         
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_q = executor.submit(extract_questions_from_ocr, qp_ocr)
+            future_a = executor.submit(segment_answer_sheet, as_ocr, as_dims)
+            questions = future_q.result()
+            answers = future_a.result()
+            
+        if not questions:
+            raise ValueError("No questions could be detected or generated.")
+            
         # Step 6: Mapping Answers
         status_store[session_id] = ProcessingStatus(
-            step="mapping_answers", status="running", progress=75, message="Mapping questions to student answers..."
+            step="mapping_answers", status="running", progress=70, message="Mapping questions to student answers..."
         )
         mappings = map_answers_to_questions(questions, answers)
         

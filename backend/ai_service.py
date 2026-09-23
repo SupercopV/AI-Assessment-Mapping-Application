@@ -46,10 +46,11 @@ def call_deepseek(prompt: str, system_prompt: str = "You are a helpful grading a
     payload = {
         "model": DEEPSEEK_MODEL,
         "messages": [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": f"{system_prompt} Output direct valid JSON only. Do not include preamble, reasoning, or markdown codeblocks."},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.1,  # Low temperature for highly structured tasks
+        "temperature": 0.0,
+        "max_tokens": 1200,
         "response_format": {"type": "json_object"}
     }
     
@@ -443,10 +444,10 @@ def map_answers_to_questions(questions: List[Question], answers: List[AnswerBloc
     
     prompt = f"""
 Questions:
-{json.dumps(question_payload, indent=2)}
+{json.dumps(question_payload, separators=(',', ':'))}
 
 Extracted Answer Blocks (Student Answer Sheet):
-{json.dumps(answer_payload, indent=2)}
+{json.dumps(answer_payload, separators=(',', ':'))}
 
 Perform the mapping between questions and answer blocks. Follow these rules carefully:
 1. Do not map purely by physical order. The student may have written answers out of order (e.g. Q3 before Q1).
