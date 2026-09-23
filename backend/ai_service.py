@@ -33,7 +33,7 @@ def clean_json_response(text: str) -> str:
     return text
 
 def call_deepseek(prompt: str, system_prompt: str = "You are a helpful grading assistant.") -> str:
-    """Makes a request to the DeepSeek API."""
+    """Makes a request to the DeepSeek / OpenRouter API with automatic 429 backoff retries."""
     if is_mock_mode():
         logger.warning("DeepSeek API Key is missing or mock. Bypassing API call.")
         return ""
@@ -43,25 +43,51 @@ def call_deepseek(prompt: str, system_prompt: str = "You are a helpful grading a
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
     
-    payload = {
-        "model": DEEPSEEK_MODEL,
-        "messages": [
-            {"role": "system", "content": f"{system_prompt} Output direct valid JSON only. Do not include preamble, reasoning, or markdown codeblocks."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.0,
-        "max_tokens": 1200,
-        "response_format": {"type": "json_object"}
-    }
-    
-    try:
-        response = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.error(f"DeepSeek API call failed: {e}")
-        raise e
+    fallback_models = [DEEPSEEK_MODEL, "qwen/qwen3.8-27b:free", "inclusionai/ling-3.0-flash-vl:free", "openrouter/free"]
+    # De-duplicate while preserving order
+    models_to_try = []
+    for m in fallback_models:
+        if m not in models_to_try:
+            models_to_try.append(m)
+
+    last_exception = None
+
+    for model in models_to_try:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": f"{system_prompt} Output direct valid JSON only. Do not include preamble, reasoning, or markdown codeblocks."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.0,
+            "max_tokens": 1200,
+            "response_format": {"type": "json_object"}
+        }
+
+        # Try up to 3 attempts per model with exponential backoff on 429
+        for attempt in range(3):
+            try:
+                response = requests.post(DEEPSEEK_API_URL, headers=headers, json=payload, timeout=60)
+                if response.status_code == 429:
+                    wait_time = 1.5 * (attempt + 1)
+                    logger.warning(f"OpenRouter 429 Rate Limit on model '{model}'. Retrying in {wait_time}s (Attempt {attempt+1}/3)...")
+                    time.sleep(wait_time)
+                    continue
+
+                response.raise_for_status()
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+            except Exception as e:
+                last_exception = e
+                if isinstance(e, requests.HTTPError) and e.response is not None and e.response.status_code == 429:
+                    wait_time = 2.0 * (attempt + 1)
+                    logger.warning(f"HTTP 429 limit hit on '{model}'. Waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"DeepSeek API call failed on model '{model}': {e}")
+                    break
+
+    raise last_exception or Exception("All OpenRouter free model retries exhausted.")
 
 
 def call_deepseek_with_validation_and_retry(prompt: str, schema_class: Any, system_prompt: str = "You are a helpful grading assistant.", max_retries: int = 2) -> Any:
