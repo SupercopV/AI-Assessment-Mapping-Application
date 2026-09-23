@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 
 # Load configurations
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "DeepSeek-V4-Flash")
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "openrouter/free")
+
 DEEPSEEK_API_URL = os.environ.get("DEEPSEEK_API_URL", "https://api.hcnsec.cn/v1/chat/completions")
 
 def is_mock_mode() -> bool:
