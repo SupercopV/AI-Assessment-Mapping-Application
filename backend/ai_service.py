@@ -43,7 +43,15 @@ def call_deepseek(prompt: str, system_prompt: str = "You are a helpful grading a
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
     
-    fallback_models = [DEEPSEEK_MODEL, "qwen/qwen3.8-27b:free", "inclusionai/ling-3.0-flash-vl:free", "openrouter/free"]
+    fallback_models = [
+        DEEPSEEK_MODEL,
+        "deepseek/deepseek-chat",
+        "google/gemini-2.0-flash-001",
+        "qwen/qwen-2.5-72b-instruct",
+        "openrouter/free",
+        "qwen/qwen3.8-27b:free",
+        "inclusionai/ling-3.0-flash-vl:free"
+    ]
     # De-duplicate while preserving order
     models_to_try = []
     for m in fallback_models:
